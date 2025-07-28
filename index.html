@@ -181,9 +181,9 @@
             let animationFrameId; // Para controlar o requestAnimationFrame do scanner
             let currentStream; // Para armazenar o stream da câmera e poder pará-lo
 
-            // A URL do seu Google Apps Script implantado.
-            // Esta URL foi fornecida por você e atualizada aqui.
-            const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby7GMObQ3dMr7eysaxLF5HfYcjCPx927uuMNPBOlClDp2wcHYKvi0SY8T3WP_Je1_IMCQ/exec'; 
+            // A URL do Google Apps Script NÃO é mais necessária aqui,
+            // pois a comunicação será feita via google.script.run
+            // const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby7GMObQ3dMr7eysaxLF5HfYcjCPx927uuMNPBOlClDp2wcHYKvi0SY8T3WP_Je1_IMCQ/exec'; 
 
             // Preenche a data e hora automaticamente
             function atualizarDataHora() {
@@ -201,16 +201,49 @@
             // Atualiza a cada segundo, mas só se o campo estiver visível e não sobrecarregando
             // setInterval(atualizarDataHora, 1000); 
 
-            // Pré-visualização da foto
+            // Pré-visualização da foto e redimensionamento antes do envio
             fotoInput.addEventListener('change', (event) => {
                 const file = event.target.files[0];
                 if (file) {
                     const reader = new FileReader();
                     reader.onload = (e) => {
-                        fotoPreview.src = e.target.result;
-                        fotoPreview.style.display = 'block';
+                        const img = new Image();
+                        img.onload = () => {
+                            const MAX_WIDTH = 800; // Largura máxima desejada para a imagem
+                            const MAX_HEIGHT = 600; // Altura máxima desejada para a imagem
+                            let width = img.width;
+                            let height = img.height;
+
+                            // Redimensiona a imagem mantendo a proporção
+                            if (width > height) {
+                                if (width > MAX_WIDTH) {
+                                    height *= MAX_WIDTH / width;
+                                    width = MAX_WIDTH;
+                                }
+                            } else {
+                                if (height > MAX_HEIGHT) {
+                                    width *= MAX_HEIGHT / height;
+                                    height = MAX_HEIGHT;
+                                }
+                            }
+
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+                            canvas.width = width;
+                            canvas.height = height;
+                            ctx.drawImage(img, 0, 0, width, height);
+
+                            // Exibe a prévia redimensionada
+                            fotoPreview.src = canvas.toDataURL('image/jpeg', 0.7); // Converte para JPEG com qualidade 70%
+                            fotoPreview.style.display = 'block';
+
+                            // Armazena a imagem redimensionada em Base64 para envio
+                            // O Base64 será anexado aos dados no momento do submit
+                            // Não armazenamos aqui diretamente para evitar problemas de escopo/memória
+                        };
+                        img.src = e.target.result; // Carrega a imagem para o objeto Image
                     };
-                    reader.readAsDataURL(file);
+                    reader.readAsDataURL(file); // Lê o arquivo como Base64 para carregar no Image
                 } else {
                     fotoPreview.src = '';
                     fotoPreview.style.display = 'none';
@@ -259,18 +292,33 @@
 
                     // Espera o vídeo carregar metadados para ter as dimensões corretas
                     qrCodeVideo.onloadedmetadata = () => {
+                        console.log("Video metadata loaded. Video dimensions:", qrCodeVideo.videoWidth, qrCodeVideo.videoHeight);
                         qrCodeCanvas.width = qrCodeVideo.videoWidth;
                         qrCodeCanvas.height = qrCodeVideo.videoHeight;
                         animationFrameId = requestAnimationFrame(tick); // Inicia o loop de leitura após metadados
                     };
+                    // Se o vídeo já carregou metadados (ex: em reativações), inicie o tick diretamente
+                    if (qrCodeVideo.readyState >= qrCodeVideo.HAVE_METADATA) {
+                         console.log("Video already has metadata. Starting tick directly.");
+                         qrCodeCanvas.width = qrCodeVideo.videoWidth;
+                         qrCodeCanvas.height = qrCodeVideo.videoHeight;
+                         animationFrameId = requestAnimationFrame(tick);
+                    }
+
 
                     const tick = () => {
+                        if (!qrScannerActive) { // Se o scanner foi desativado, pare o loop
+                            console.log("Scanner desativado, parando tick.");
+                            return; 
+                        }
+
                         if (qrCodeVideo.readyState === qrCodeVideo.HAVE_ENOUGH_DATA) {
                             // Redefine o tamanho do canvas em cada tick para garantir que corresponda ao vídeo
                             // Isso é importante caso o vídeo mude de resolução dinamicamente
-                            if (qrCodeCanvas.width !== qrCodeVideo.videoWidth || qrCodeCanvas.height !== qrCodeVideo.height) {
+                            if (qrCodeCanvas.width !== qrCodeVideo.videoWidth || qrCodeCanvas.height !== qrCodeVideo.videoHeight) {
                                 qrCodeCanvas.width = qrCodeVideo.videoWidth;
                                 qrCodeCanvas.height = qrCodeVideo.videoHeight;
+                                console.log("Canvas dimensions updated:", qrCodeCanvas.width, qrCodeCanvas.height);
                             }
                             
                             // Desenha o frame atual do vídeo no canvas
@@ -334,11 +382,22 @@
                     const reader = new FileReader();
 
                     reader.onloadend = async () => {
-                        // O resultado é a string Base64 da imagem
-                        const base64Image = reader.result;
-                        dados.base64Image = base64Image; // Adiciona a imagem Base64 aos dados
+                        // O resultado é a string Base64 da imagem original
+                        const originalBase64 = reader.result;
 
-                        await sendDataToAppsScript(dados); // Envia os dados (incluindo a imagem)
+                        // Redimensiona a imagem antes de adicionar aos dados
+                        const resizedBase64 = await resizeImage(originalBase64);
+                        if (resizedBase64) {
+                            dados.base64Image = resizedBase64; // Adiciona a imagem Base64 redimensionada aos dados
+                            // Envia os dados (incluindo a imagem) para a função processForm no Apps Script
+                            google.script.run
+                                .withSuccessHandler(onSuccess)
+                                .withFailureHandler(onFailure)
+                                .processForm(dados);
+                        } else {
+                            mensagemStatus.textContent = 'Erro ao redimensionar a imagem. Tente novamente.';
+                            mensagemStatus.style.color = 'red';
+                        }
                     };
 
                     reader.onerror = (error) => {
@@ -350,26 +409,57 @@
                     reader.readAsDataURL(file); // Lê o arquivo como Base64
                 } else {
                     // Se não houver foto, envia os outros dados normalmente
-                    await sendDataToAppsScript(dados);
+                    google.script.run
+                        .withSuccessHandler(onSuccess)
+                        .withFailureHandler(onFailure)
+                        .processForm(dados);
                 }
             });
 
-            // Função auxiliar para enviar os dados para o Apps Script
-            async function sendDataToAppsScript(dadosParaEnviar) {
-                try {
-                    const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
-                        method: 'POST',
-                        mode: 'no-cors', // Usamos 'no-cors' para evitar problemas de CORS.
-                                        // Com isso, não podemos ler a resposta exata do Apps Script,
-                                        // mas os dados ainda são enviados.
-                        headers: {
-                            'Content-Type': 'text/plain;charset=utf-8', // O Apps Script espera text/plain para JSON.parse(e.postData.contents)
-                        },
-                        body: JSON.stringify(dadosParaEnviar),
-                    });
+            // Função para redimensionar a imagem usando um canvas
+            function resizeImage(base64Str) {
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const MAX_WIDTH = 800; // Largura máxima desejada
+                        const MAX_HEIGHT = 600; // Altura máxima desejada
+                        let width = img.width;
+                        let height = img.height;
 
-                    // Como 'no-cors' não permite ler a resposta detalhada,
-                    // assumimos sucesso se a requisição foi feita sem erro de rede.
+                        // Redimensiona a imagem mantendo a proporção
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height *= MAX_WIDTH / width;
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width *= MAX_HEIGHT / height;
+                                height = MAX_HEIGHT;
+                            }
+                        }
+
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = width;
+                        canvas.height = height;
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // Converte para JPEG com qualidade 70% para reduzir o tamanho do arquivo
+                        resolve(canvas.toDataURL('image/jpeg', 0.7)); 
+                    };
+                    img.onerror = () => {
+                        console.error("Erro ao carregar imagem para redimensionar.");
+                        resolve(null); // Retorna null em caso de erro
+                    };
+                    img.src = base64Str;
+                });
+            }
+
+
+            // Funções de callback para google.script.run
+            function onSuccess(response) {
+                if (response.status === 'success') {
                     mensagemStatus.textContent = 'Dados enviados com sucesso! (Verifique sua planilha e o Google Drive)';
                     mensagemStatus.style.color = 'green';
                     formularioColeta.reset(); // Limpa o formulário
@@ -377,11 +467,16 @@
                     fotoPreview.style.display = 'none';
                     atualizarDataHora(); // Atualiza data/hora para nova entrada
                     stopQrScanner(); // Garante que o scanner de QR esteja parado após o envio
-                } catch (error) {
-                    console.error('Erro ao enviar dados:', error);
-                    mensagemStatus.textContent = 'Erro ao enviar dados. Tente novamente. ' + error.message;
+                } else {
+                    mensagemStatus.textContent = `Erro ao enviar dados: ${response.message}`;
                     mensagemStatus.style.color = 'red';
                 }
+            }
+
+            function onFailure(error) {
+                console.error('Erro no Apps Script:', error);
+                mensagemStatus.textContent = 'Erro ao enviar dados. Tente novamente: ' + error.message;
+                mensagemStatus.style.color = 'red';
             }
         });
     </script>
