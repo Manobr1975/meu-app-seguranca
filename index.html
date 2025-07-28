@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coleta de Dados de Segurança</title>
+    <style>
+        /* Estilos CSS para o layout e aparência do formulário */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .container {
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 600px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 25px;
+        }
+
+        form label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+
+        form input[type="text"],
+        form select,
+        form textarea {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        form input[type="file"] {
+            margin-bottom: 15px;
+        }
+
+        form button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+            box-sizing: border-box; /* Garante que o padding não aumente a largura */
+        }
+
+        form button:hover {
+            background-color: #0056b3;
+        }
+        
+        /* Estilo para botões de ação na mesma linha (se houver) */
+        .button-group {
+            display: flex;
+            gap: 10px; /* Espaçamento entre os botões */
+            margin-bottom: 15px;
+        }
+
+        .button-group button {
+            flex: 1; /* Faz com que os botões ocupem o espaço igualmente */
+            margin-top: 0; /* Remove a margem superior padrão do botão */
+        }
+
+
+        #mensagemStatus {
+            text-align: center;
+            margin-top: 20px;
+            font-weight: bold;
+            color: green;
+        }
+
+        .foto-preview-container {
+            margin-top: 10px;
+            text-align: center;
+        }
+
+        video#qrCodeVideo {
+            width: 100%;
+            max-width: 400px; /* Limita a largura do vídeo para melhor visualização em telas grandes */
+            height: auto;
+            margin: 10px auto; /* Centraliza o vídeo */
+            display: block; /* Garante que o vídeo se centralize */
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Coleta de Dados de Segurança</h1>
+        <form id="formularioColeta">
+            <label for="dataHora">Data e Hora:</label>
+            <input type="text" id="dataHora" readonly>
+
+            <label for="responsavel">Responsável:</label>
+            <select id="responsavel" required>
+                <option value="">Selecione um responsável</option>
+                <option value="Manoel">Manoel</option>
+                <option value="Aubidene">Aubidene</option>
+                <option value="Genilton">Genilton</option>
+            </select>
+
+            <label for="matricula">Matrícula (QR Code):</label>
+            <input type="text" id="matricula" placeholder="Ler QR Code ou digitar" required>
+            <button type="button" id="btnLerQrCode">Ler QR Code</button>
+            <video id="qrCodeVideo" style="display:none;"></video>
+            <canvas id="qrCodeCanvas" style="display:none;"></canvas> <!-- Canvas para processar o QR code -->
+            <p id="qrStatus" style="text-align: center; font-size: 0.9em; color: gray;"></p>
+
+            <label for="local">Local:</label>
+            <!-- Adicionado autocomplete="off" para tentar desativar o preenchimento automático do navegador -->
+            <input type="text" id="local" placeholder="Ex: Setor A - Fábrica" required autocomplete="off">
+
+            <label for="situacaoEncontrada">Situação Encontrada:</label>
+            <select id="situacaoEncontrada" required>
+                <option value="">Selecione a situação</option>
+                <option value="Ato Inseguro">Ato Inseguro</option>
+                <option value="Condição Insegura">Condição Insegura</option>
+            </select>
+
+            <label for="analiseSituacao">Análise da Situação:</label>
+            <textarea id="analiseSituacao" rows="4" placeholder="Descreva a análise da situação..." required></textarea>
+
+            <label for="acoesTomadas">Ações Tomadas:</label>
+            <textarea id="acoesTomadas" rows="4" placeholder="Descreva as ações tomadas..."></textarea>
+
+            <label for="foto">Foto:</label>
+            <!-- Adicionamos capture="camera" para sugerir a abertura da câmera -->
+            <input type="file" id="foto" accept="image/*" capture="camera">
+            <div class="foto-preview-container">
+                <img id="fotoPreview" src="" alt="Prévia da foto" style="display:none; max-width: 100%; height: auto;">
+            </div>
+            
+            <label for="observacaoFoto">Observação da Foto:</label>
+            <input type="text" id="observacaoFoto" placeholder="Ex: Equipamento sem proteção">
+
+            <button type="submit">Enviar Dados</button>
+            <p id="mensagemStatus"></p>
+        </form>
+    </div>
+
+    <!-- Inclui a biblioteca jsQR para leitura de QR Code -->
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.0.0/dist/jsQR.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const formularioColeta = document.getElementById('formularioColeta');
+            const dataHoraInput = document.getElementById('dataHora');
+            const fotoInput = document.getElementById('foto');
+            const fotoPreview = document.getElementById('fotoPreview');
+            const mensagemStatus = document.getElementById('mensagemStatus');
+            const btnLerQrCode = document.getElementById('btnLerQrCode');
+            const qrCodeVideo = document.getElementById('qrCodeVideo');
+            const qrCodeCanvas = document.getElementById('qrCodeCanvas');
+            const matriculaInput = document.getElementById('matricula');
+            const qrStatus = document.getElementById('qrStatus');
+
+            let qrScannerActive = false; // Flag para controlar se o scanner está ativo
+            let animationFrameId; // Para controlar o requestAnimationFrame do scanner
+            let currentStream; // Para armazenar o stream da câmera e poder pará-lo
+
+            // A URL do seu Google Apps Script implantado.
+            // Esta URL foi fornecida por você e atualizada aqui.
+            const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby7GMObQ3dMr7eysaxLF5HfYcjCPx927uuMNPBOlClDp2wcHYKvi0SY8T3WP_Je1_IMCQ/exec'; 
+
+            // Preenche a data e hora automaticamente
+            function atualizarDataHora() {
+                const agora = new Date();
+                dataHoraInput.value = agora.toLocaleString('pt-BR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            }
+            atualizarDataHora();
+            // Atualiza a cada segundo, mas só se o campo estiver visível e não sobrecarregando
+            // setInterval(atualizarDataHora, 1000); 
+
+            // Pré-visualização da foto
+            fotoInput.addEventListener('change', (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        fotoPreview.src = e.target.result;
+                        fotoPreview.style.display = 'block';
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    fotoPreview.src = '';
+                    fotoPreview.style.display = 'none';
+                }
+            });
+
+            // Função para parar o scanner de QR Code
+            function stopQrScanner() {
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                }
+                qrCodeVideo.style.display = 'none';
+                qrCodeVideo.srcObject = null;
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                }
+                btnLerQrCode.textContent = 'Ler QR Code';
+                qrScannerActive = false;
+                qrStatus.textContent = '';
+            }
+
+            // Função para iniciar o scanner de QR Code
+            btnLerQrCode.addEventListener('click', async () => {
+                if (qrScannerActive) { // Se o scanner já estiver ativo, pare-o
+                    stopQrScanner();
+                    return;
+                }
+
+                qrStatus.textContent = 'Solicitando acesso à câmera...';
+                qrStatus.style.color = 'gray';
+
+                try {
+                    // Solicita acesso à câmera traseira preferencialmente ('environment')
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                    currentStream = stream; // Armazena o stream para poder pará-lo depois
+                    qrCodeVideo.srcObject = stream;
+                    qrCodeVideo.style.display = 'block'; // Mostra o elemento de vídeo
+                    qrCodeVideo.play();
+                    btnLerQrCode.textContent = 'Parar Leitura QR';
+                    qrScannerActive = true;
+                    qrStatus.textContent = 'Posicione o QR Code na frente da câmera.';
+                    qrStatus.style.color = 'blue';
+
+                    const context = qrCodeCanvas.getContext('2d');
+                    // qrCodeCanvas.hidden = true; // Mantém o canvas oculto, pois só o usamos para processamento
+
+                    // Espera o vídeo carregar metadados para ter as dimensões corretas
+                    qrCodeVideo.onloadedmetadata = () => {
+                        qrCodeCanvas.width = qrCodeVideo.videoWidth;
+                        qrCodeCanvas.height = qrCodeVideo.videoHeight;
+                        animationFrameId = requestAnimationFrame(tick); // Inicia o loop de leitura após metadados
+                    };
+
+                    const tick = () => {
+                        if (qrCodeVideo.readyState === qrCodeVideo.HAVE_ENOUGH_DATA) {
+                            // Redefine o tamanho do canvas em cada tick para garantir que corresponda ao vídeo
+                            // Isso é importante caso o vídeo mude de resolução dinamicamente
+                            if (qrCodeCanvas.width !== qrCodeVideo.videoWidth || qrCodeCanvas.height !== qrCodeVideo.height) {
+                                qrCodeCanvas.width = qrCodeVideo.videoWidth;
+                                qrCodeCanvas.height = qrCodeVideo.videoHeight;
+                            }
+                            
+                            // Desenha o frame atual do vídeo no canvas
+                            context.drawImage(qrCodeVideo, 0, 0, qrCodeCanvas.width, qrCodeCanvas.height);
+                            
+                            // Obtém os dados de pixel do canvas
+                            const imageData = context.getImageData(0, 0, qrCodeCanvas.width, qrCodeCanvas.height);
+                            
+                            // Tenta ler o QR Code a partir dos dados de pixel
+                            const code = jsQR(imageData.data, imageData.width, imageData.height, {
+                                inversionAttempts: "dontInvert", // Pode ajustar isso se tiver problemas com QR codes invertidos
+                            });
+
+                            if (code) {
+                                console.log("QR Code detectado:", code.data);
+                                matriculaInput.value = code.data;
+                                qrStatus.textContent = `QR Code lido: ${code.data}`;
+                                qrStatus.style.color = 'green';
+                                stopQrScanner(); // Para a câmera e o scanner após ler o QR Code
+                                return; // Sai da função tick para evitar mais chamadas
+                            }
+                        }
+                        // Continua pedindo o próximo frame se nenhum QR Code foi encontrado
+                        animationFrameId = requestAnimationFrame(tick);
+                    };
+                    
+                } catch (err) {
+                    console.error("Erro ao acessar a câmera:", err);
+                    mensagemStatus.textContent = 'Erro ao acessar a câmera para QR Code. Verifique as permissões do navegador.';
+                    mensagemStatus.style.color = 'red';
+                    qrStatus.textContent = 'Erro: Câmera não acessível ou permissão negada.';
+                    qrStatus.style.color = 'red';
+                    stopQrScanner(); // Garante que tudo seja parado em caso de erro
+                }
+            });
+
+
+            // Lidar com o envio do formulário
+            formularioColeta.addEventListener('submit', async (e) => {
+                e.preventDefault(); // Impede o recarregamento da página
+
+                mensagemStatus.textContent = 'Enviando dados...';
+                mensagemStatus.style.color = 'blue';
+
+                // Coletar todos os dados do formulário
+                const dados = {
+                    dataHora: dataHoraInput.value,
+                    responsavel: document.getElementById('responsavel').value,
+                    matricula: document.getElementById('matricula').value, // Usar o valor atual do input
+                    local: document.getElementById('local').value,
+                    situacaoEncontrada: document.getElementById('situacaoEncontrada').value,
+                    analiseSituacao: document.getElementById('analiseSituacao').value,
+                    acoesTomadas: document.getElementById('acoesTomadas').value,
+                    observacaoFoto: document.getElementById('observacaoFoto').value,
+                    urlFoto: '' // Será preenchida pelo Apps Script após o upload
+                };
+
+                // Lidar com o upload da foto para o Google Drive via Apps Script
+                if (fotoInput.files.length > 0) {
+                    const file = fotoInput.files[0];
+                    const reader = new FileReader();
+
+                    reader.onloadend = async () => {
+                        // O resultado é a string Base64 da imagem
+                        const base64Image = reader.result;
+                        dados.base64Image = base64Image; // Adiciona a imagem Base64 aos dados
+
+                        await sendDataToAppsScript(dados); // Envia os dados (incluindo a imagem)
+                    };
+
+                    reader.onerror = (error) => {
+                        console.error("Erro ao ler o arquivo:", error);
+                        mensagemStatus.textContent = 'Erro ao ler a imagem. Tente novamente.';
+                        mensagemStatus.style.color = 'red';
+                    };
+
+                    reader.readAsDataURL(file); // Lê o arquivo como Base64
+                } else {
+                    // Se não houver foto, envia os outros dados normalmente
+                    await sendDataToAppsScript(dados);
+                }
+            });
+
+            // Função auxiliar para enviar os dados para o Apps Script
+            async function sendDataToAppsScript(dadosParaEnviar) {
+                try {
+                    const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors', // Usamos 'no-cors' para evitar problemas de CORS.
+                                        // Com isso, não podemos ler a resposta exata do Apps Script,
+                                        // mas os dados ainda são enviados.
+                        headers: {
+                            'Content-Type': 'text/plain;charset=utf-8', // O Apps Script espera text/plain para JSON.parse(e.postData.contents)
+                        },
+                        body: JSON.stringify(dadosParaEnviar),
+                    });
+
+                    // Como 'no-cors' não permite ler a resposta detalhada,
+                    // assumimos sucesso se a requisição foi feita sem erro de rede.
+                    mensagemStatus.textContent = 'Dados enviados com sucesso! (Verifique sua planilha e o Google Drive)';
+                    mensagemStatus.style.color = 'green';
+                    formularioColeta.reset(); // Limpa o formulário
+                    fotoPreview.src = '';
+                    fotoPreview.style.display = 'none';
+                    atualizarDataHora(); // Atualiza data/hora para nova entrada
+                    stopQrScanner(); // Garante que o scanner de QR esteja parado após o envio
+                } catch (error) {
+                    console.error('Erro ao enviar dados:', error);
+                    mensagemStatus.textContent = 'Erro ao enviar dados. Tente novamente. ' + error.message;
+                    mensagemStatus.style.color = 'red';
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+
