@@ -195,6 +195,10 @@
             let animationFrameId; // Para controlar o requestAnimationFrame do scanner
             let currentStream; // Para armazenar o stream da câmera e poder pará-lo
 
+            // A URL do Google Apps Script NÃO é mais necessária aqui,
+            // pois a comunicação será feita via google.script.run
+            // const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby7GMObQ3dMr7eysaxLF5HfYcjCPx927uuMNPBOlClDp2wcHYKvi0SY8T3WP_Je1_IMCQ/exec'; 
+
             // Preenche a data e hora automaticamente
             function atualizarDataHora() {
                 const agora = new Date();
