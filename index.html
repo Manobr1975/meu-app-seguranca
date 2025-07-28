@@ -195,9 +195,9 @@
             let animationFrameId; // Para controlar o requestAnimationFrame do scanner
             let currentStream; // Para armazenar o stream da câmera e poder pará-lo
 
-            // A URL do Google Apps Script NÃO é mais necessária aqui,
-            // pois a comunicação será feita via google.script.run
-            // const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby7GMObQ3dMr7eysaxLF5HfYcjCPx927uuMNPBOlClDp2wcHYKvi0SY8T3WP_Je1_IMCQ/exec'; 
+            // A URL do seu Google Apps Script implantado.
+            // Esta URL foi fornecida por você e está sendo usada novamente.
+            const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby7GMObQ3dMr7eysaxLF5HfYcjCPx927uuMNPBOlClDp2wcHYKvi0SY8T3WP_Je1_IMCQ/exec'; 
 
             // Preenche a data e hora automaticamente
             function atualizarDataHora() {
@@ -405,11 +405,7 @@
                         const resizedBase64 = await resizeImage(originalBase64);
                         if (resizedBase64) {
                             dados.base64Image = resizedBase64; // Adiciona a imagem Base64 redimensionada aos dados
-                            // Envia os dados (incluindo a imagem) para a função processForm no Apps Script
-                            google.script.run
-                                .withSuccessHandler(onSuccess)
-                                .withFailureHandler(onFailure)
-                                .processForm(dados);
+                            await sendDataToAppsScript(dados); // Envia os dados (incluindo a imagem)
                         } else {
                             mensagemStatus.textContent = 'Erro ao redimensionar a imagem. Tente novamente.';
                             mensagemStatus.style.color = 'red';
@@ -425,10 +421,7 @@
                     reader.readAsDataURL(file); // Lê o arquivo como Base64
                 } else {
                     // Se não houver foto, envia os outros dados normalmente
-                    google.script.run
-                        .withSuccessHandler(onSuccess)
-                        .withFailureHandler(onFailure)
-                        .processForm(dados);
+                    await sendDataToAppsScript(dados);
                 }
             });
 
@@ -473,9 +466,22 @@
             }
 
 
-            // Funções de callback para google.script.run
-            function onSuccess(response) {
-                if (response.status === 'success') {
+            // Função auxiliar para enviar os dados para o Apps Script (usando fetch)
+            async function sendDataToAppsScript(dadosParaEnviar) {
+                try {
+                    const response = await fetch(GOOGLE_APPS_SCRIPT_URL, {
+                        method: 'POST',
+                        mode: 'no-cors', // Usamos 'no-cors' para evitar problemas de CORS.
+                                        // Com isso, não podemos ler a resposta exata do Apps Script,
+                                        // mas os dados ainda são enviados.
+                        headers: {
+                            'Content-Type': 'text/plain;charset=utf-8', // O Apps Script espera text/plain para JSON.parse(e.postData.contents)
+                        },
+                        body: JSON.stringify(dadosParaEnviar),
+                    });
+
+                    // Como 'no-cors' não permite ler a resposta detalhada,
+                    // assumimos sucesso se a requisição foi feita sem erro de rede.
                     mensagemStatus.textContent = 'Dados enviados com sucesso! (Verifique sua planilha e o Google Drive)';
                     mensagemStatus.style.color = 'green';
                     formularioColeta.reset(); // Limpa o formulário
@@ -483,19 +489,13 @@
                     fotoPreview.style.display = 'none';
                     atualizarDataHora(); // Atualiza data/hora para nova entrada
                     stopQrScanner(); // Garante que o scanner de QR esteja parado após o envio
-                } else {
-                    mensagemStatus.textContent = `Erro ao enviar dados: ${response.message}`;
+                } catch (error) {
+                    console.error('Erro ao enviar dados:', error);
+                    mensagemStatus.textContent = 'Erro ao enviar dados. Tente novamente. ' + error.message;
                     mensagemStatus.style.color = 'red';
                 }
-            }
-
-            function onFailure(error) {
-                console.error('Erro no Apps Script:', error);
-                mensagemStatus.textContent = 'Erro ao enviar dados. Tente novamente: ' + error.message;
-                mensagemStatus.style.color = 'red';
             }
         });
     </script>
 </body>
 </html>
-
