@@ -201,49 +201,16 @@
             // Atualiza a cada segundo, mas só se o campo estiver visível e não sobrecarregando
             // setInterval(atualizarDataHora, 1000); 
 
-            // Pré-visualização da foto e redimensionamento antes do envio
+            // Pré-visualização da foto
             fotoInput.addEventListener('change', (event) => {
                 const file = event.target.files[0];
                 if (file) {
                     const reader = new FileReader();
                     reader.onload = (e) => {
-                        const img = new Image();
-                        img.onload = () => {
-                            const MAX_WIDTH = 800; // Largura máxima desejada para a imagem
-                            const MAX_HEIGHT = 600; // Altura máxima desejada para a imagem
-                            let width = img.width;
-                            let height = img.height;
-
-                            // Redimensiona a imagem mantendo a proporção
-                            if (width > height) {
-                                if (width > MAX_WIDTH) {
-                                    height *= MAX_WIDTH / width;
-                                    width = MAX_WIDTH;
-                                }
-                            } else {
-                                if (height > MAX_HEIGHT) {
-                                    width *= MAX_HEIGHT / height;
-                                    height = MAX_HEIGHT;
-                                }
-                            }
-
-                            const canvas = document.createElement('canvas');
-                            const ctx = canvas.getContext('2d');
-                            canvas.width = width;
-                            canvas.height = height;
-                            ctx.drawImage(img, 0, 0, width, height);
-
-                            // Exibe a prévia redimensionada
-                            fotoPreview.src = canvas.toDataURL('image/jpeg', 0.7); // Converte para JPEG com qualidade 70%
-                            fotoPreview.style.display = 'block';
-
-                            // Armazena a imagem redimensionada em Base64 para envio
-                            // O Base64 será anexado aos dados no momento do submit
-                            // Não armazenamos aqui diretamente para evitar problemas de escopo/memória
-                        };
-                        img.src = e.target.result; // Carrega a imagem para o objeto Image
+                        fotoPreview.src = e.target.result;
+                        fotoPreview.style.display = 'block';
                     };
-                    reader.readAsDataURL(file); // Lê o arquivo como Base64 para carregar no Image
+                    reader.readAsDataURL(file);
                 } else {
                     fotoPreview.src = '';
                     fotoPreview.style.display = 'none';
@@ -367,18 +334,11 @@
                     const reader = new FileReader();
 
                     reader.onloadend = async () => {
-                        // O resultado é a string Base64 da imagem original
-                        const originalBase64 = reader.result;
+                        // O resultado é a string Base64 da imagem
+                        const base64Image = reader.result;
+                        dados.base64Image = base64Image; // Adiciona a imagem Base64 aos dados
 
-                        // Redimensiona a imagem antes de adicionar aos dados
-                        const resizedBase64 = await resizeImage(originalBase64);
-                        if (resizedBase64) {
-                            dados.base64Image = resizedBase64; // Adiciona a imagem Base64 redimensionada aos dados
-                            await sendDataToAppsScript(dados); // Envia os dados (incluindo a imagem)
-                        } else {
-                            mensagemStatus.textContent = 'Erro ao redimensionar a imagem. Tente novamente.';
-                            mensagemStatus.style.color = 'red';
-                        }
+                        await sendDataToAppsScript(dados); // Envia os dados (incluindo a imagem)
                     };
 
                     reader.onerror = (error) => {
@@ -393,46 +353,6 @@
                     await sendDataToAppsScript(dados);
                 }
             });
-
-            // Função para redimensionar a imagem usando um canvas
-            function resizeImage(base64Str) {
-                return new Promise((resolve) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const MAX_WIDTH = 800; // Largura máxima desejada
-                        const MAX_HEIGHT = 600; // Altura máxima desejada
-                        let width = img.width;
-                        let height = img.height;
-
-                        if (width > height) {
-                            if (width > MAX_WIDTH) {
-                                height *= MAX_WIDTH / width;
-                                width = MAX_WIDTH;
-                            }
-                        } else {
-                            if (height > MAX_HEIGHT) {
-                                width *= MAX_HEIGHT / height;
-                                height = MAX_HEIGHT;
-                            }
-                        }
-
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
-                        canvas.width = width;
-                        canvas.height = height;
-                        ctx.drawImage(img, 0, 0, width, height);
-                        
-                        // Converte para JPEG com qualidade 70% para reduzir o tamanho do arquivo
-                        resolve(canvas.toDataURL('image/jpeg', 0.7)); 
-                    };
-                    img.onerror = () => {
-                        console.error("Erro ao carregar imagem para redimensionar.");
-                        resolve(null); // Retorna null em caso de erro
-                    };
-                    img.src = base64Str;
-                });
-            }
-
 
             // Função auxiliar para enviar os dados para o Apps Script
             async function sendDataToAppsScript(dadosParaEnviar) {
